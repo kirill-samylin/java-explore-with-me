@@ -1,14 +1,102 @@
+version: '3.8'
+
 services:
-  stats-server:
-    ports:
-      - "9090:9090"
-
   stats-db:
-    image: postgres:16.1
+    image: postgres:16
+    container_name: stats-postgres
+    environment:
+      POSTGRES_DB: stats
+      POSTGRES_USER: stats_user
+      POSTGRES_PASSWORD: stats_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - stats_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stats_user -d stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  ewm-service:
+  stats-service:
+    build:
+      context: ./stats-service
+      dockerfile: Dockerfile
+    container_name: stats-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://stats-db:5432/stats
+      SPRING_DATASOURCE_USERNAME: stats_user
+      SPRING_DATASOURCE_PASSWORD: stats_pass
+      SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      SPRING_THREADS_VIRTUAL_ENABLED: true
+    ports:
+      - "9090:8080"
+    depends_on:
+      stats-db:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  core-db:
+    image: postgres:16
+    container_name: core-postgres
+    environment:
+      POSTGRES_DB: core
+      POSTGRES_USER: core_user
+      POSTGRES_PASSWORD: core_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - core_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U core_user -d core"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  core-service:
+    build:
+      context: ./core-service
+      dockerfile: Dockerfile
+    container_name: core-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://core-db:5432/core
+      SPRING_DATASOURCE_USERNAME: core_user
+      SPRING_DATASOURCE_PASSWORD: core_pass
+      STATS_SERVICE_URL: http://stats-service:8080
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      SPRING_THREADS_VIRTUAL_ENABLED: true
     ports:
       - "8080:8080"
+    depends_on:
+      core-db:
+        condition: service_healthy
+      stats-service:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-  ewm-db:
-    image: postgres:16.1
+volumes:
+  stats_data:
+  core_data:
+
+networks:
+  app-network:
+    driver: bridge
