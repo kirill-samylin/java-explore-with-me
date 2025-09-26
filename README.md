@@ -1,2 +1,5 @@
 # java-explore-with-me
-Template repository for ExploreWithMe project.
+
+# Архитектура проекта
+
+![img.png](img.png)
